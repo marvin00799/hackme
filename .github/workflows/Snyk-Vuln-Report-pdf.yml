@@ -1,4 +1,4 @@
-name: Enhanced Snyk Security Scan with PDF/HTML Reports
+name: Snyk Security Scan with Reliable Reports
 
 on: push
 
@@ -8,13 +8,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install report tools
-      - name: Setup PDF generation
+      # Install required tools
+      - name: Setup tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y wkhtmltopdf pandoc
+          sudo apt-get install -y wkhtmltopdf
+          npm install -g snyk-to-html
 
-      # Run Snyk scan (original SARIF output + new reports)
+      # Run Snyk scan with explicit JSON output
       - name: Run Snyk scan
         uses: snyk/actions/python-3.8@master
         continue-on-error: true
@@ -23,20 +24,28 @@ jobs:
         with:
           args: |
             --sarif-file-output=snyk.sarif
-            --report
             --json-file-output=snyk.json
+            --report
 
-      # Generate HTML/PDF reports
-      - name: Create human-readable reports
+      # Verify JSON file exists
+      - name: Check for report
+        run: |
+          ls -la
+          if [ ! -f "snyk.json" ]; then
+            echo "Error: snyk.json not generated!"
+            exit 1
+          fi
+
+      # Generate reports
+      - name: Create reports
         run: |
           # Convert JSON to HTML
-          npm install -g snyk-to-html
           snyk-to-html -i snyk.json -o snyk-report.html
           
-          # Convert HTML to PDF
-          wkhtmltopdf --enable-local-file-access snyk-report.html snyk-report.pdf
+          # Convert HTML to PDF (using local file)
+          wkhtmltopdf --enable-local-file-access file://$(pwd)/snyk-report.html snyk-report.pdf
 
-      # Upload all artifacts
+      # Upload artifacts
       - name: Upload reports
         uses: actions/upload-artifact@v4
         with:
@@ -45,10 +54,9 @@ jobs:
             snyk.sarif
             snyk-report.html
             snyk-report.pdf
-          retention-days: 7
 
-      # Original GitHub code scanning upload
-      - name: Upload SARIF to GitHub
+      # Original SARIF upload
+      - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: snyk.sarif
