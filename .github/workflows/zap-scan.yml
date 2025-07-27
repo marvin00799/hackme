@@ -6,44 +6,48 @@ on:
   workflow_dispatch:
 
 jobs:
-  zap_scan:
+  security_scan:
     runs-on: ubuntu-latest
     
-    # No container specification needed - we'll run ZAP directly
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Run ZAP Baseline Scan
+      # 1. Start your application (modify for your tech stack)
+      - name: Start Application
         run: |
-          # Pull the current official ZAP image
-          docker pull ghcr.io/zaproxy/zaproxy:stable
+          # Example for Node.js apps:
+          npm install
+          npm run start &  # Run in background
+          sleep 30        # Wait for app to start
           
-          # Run the scan (mapping reports to workspace)
-          docker run --rm \
-            -v $(pwd):/zap/wrk \
-            -w /zap/wrk \
-            ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py \
-            -t ${{ vars.TARGET_URL || 'http://localhost:8080' }} \
-            -r zap-report.html \
-            -x zap-report.xml \
-            -J zap-report.json \
-            -d
+          # For Python apps use:
+          # python -m http.server 8000 &
+          # sleep 10
+          
+          # Verify app is running
+          curl -f http://localhost:3000 || exit 1
 
-      - name: Upload Reports
+      # 2. Run ZAP Scan against localhost
+      - name: Run ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.6.0  # Official ZAP Action
+        with:
+          target: 'http://localhost:3000'     # Match your app's port
+          rules_file_name: "zap-rules.tsv"
+          cmd_options: "-d"                  # Daemon mode
+
+      # 3. Upload reports
+      - name: Upload Security Reports
         uses: actions/upload-artifact@v4
         with:
-          name: zap-security-reports
+          name: zap-reports
           path: |
-            zap-report.html
-            zap-report.xml
-            zap-report.json
+            zap-results.*
           retention-days: 3
 
-      - name: Check for Critical Findings
+      # 4. Fail if high-risk vulnerabilities found
+      - name: Check Results
         run: |
-          if grep -q "<riskcode>3" zap-report.xml; then
+          if grep -q "High" zap-results.xml; then
             echo "::error::High risk vulnerabilities detected!"
             exit 1
           fi
