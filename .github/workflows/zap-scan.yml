@@ -3,27 +3,25 @@ name: OWASP ZAP Baseline Scan
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch:  # Enable manual runs
+  workflow_dispatch:
 
 jobs:
   zap_scan:
     runs-on: ubuntu-latest
     container:
-      image: owasp/zap2docker-stable  # Official ZAP image
+      image: owasp/zap2docker-weekly  # ← CORRECT IMAGE NAME
       options: --user root
 
     steps:
-      # 1. Run baseline scan against target URL
-      - name: ZAP Baseline Scan
+      - name: Run ZAP Baseline Scan
         run: |
           zap-baseline.py \
-          -t ${{ vars.TARGET_URL || 'http://localhost:8080' }} \  # Default to localhost
-          -r zap-report.html \  # HTML report
-          -x zap-report.xml \  # XML report (for CI integration)
-          -J zap-report.json \  # JSON report
-          -d  # Daemon mode
+          -t ${{ vars.TARGET_URL || 'http://localhost:8080' }} \
+          -r zap-report.html \
+          -x zap-report.xml \
+          -J zap-report.json \
+          -d
 
-      # 2. Upload all reports
       - name: Upload Reports
         uses: actions/upload-artifact@v4
         with:
@@ -32,12 +30,10 @@ jobs:
             zap-report.html
             zap-report.xml
             zap-report.json
-          retention-days: 3
 
-      # 3. Fail if high-risk issues found
       - name: Check Results
         run: |
-          if grep -q "<riskcode>3" zap-report.xml; then  # Riskcode 3 = High
+          if grep -q "<riskcode>3" zap-report.xml; then
             echo "::error::High risk vulnerabilities detected!"
             exit 1
           fi
