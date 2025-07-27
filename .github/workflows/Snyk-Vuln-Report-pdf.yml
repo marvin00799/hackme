@@ -1,0 +1,54 @@
+name: Enhanced Snyk Security Scan with PDF/HTML Reports
+
+on: push
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install report tools
+      - name: Setup PDF generation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wkhtmltopdf pandoc
+
+      # Run Snyk scan (original SARIF output + new reports)
+      - name: Run Snyk scan
+        uses: snyk/actions/python-3.8@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: |
+            --sarif-file-output=snyk.sarif
+            --report
+            --json-file-output=snyk.json
+
+      # Generate HTML/PDF reports
+      - name: Create human-readable reports
+        run: |
+          # Convert JSON to HTML
+          npm install -g snyk-to-html
+          snyk-to-html -i snyk.json -o snyk-report.html
+          
+          # Convert HTML to PDF
+          wkhtmltopdf --enable-local-file-access snyk-report.html snyk-report.pdf
+
+      # Upload all artifacts
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            snyk.sarif
+            snyk-report.html
+            snyk-report.pdf
+          retention-days: 7
+
+      # Original GitHub code scanning upload
+      - name: Upload SARIF to GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk.sarif
