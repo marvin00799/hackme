@@ -1,37 +1,47 @@
-name: OWASP ZAP Baseline Scan
+name: OWASP ZAP Security Scan
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   workflow_dispatch:
 
 jobs:
   zap_scan:
     runs-on: ubuntu-latest
-    container:
-      image: owasp/zap2docker-weekly  # ← CORRECT IMAGE NAME
-      options: --user root
-
+    
+    # No container specification needed - we'll run ZAP directly
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Run ZAP Baseline Scan
         run: |
-          zap-baseline.py \
-          -t ${{ vars.TARGET_URL || 'http://localhost:8080' }} \
-          -r zap-report.html \
-          -x zap-report.xml \
-          -J zap-report.json \
-          -d
+          # Pull the current official ZAP image
+          docker pull ghcr.io/zaproxy/zaproxy:stable
+          
+          # Run the scan (mapping reports to workspace)
+          docker run --rm \
+            -v $(pwd):/zap/wrk \
+            -w /zap/wrk \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t ${{ vars.TARGET_URL || 'http://localhost:8080' }} \
+            -r zap-report.html \
+            -x zap-report.xml \
+            -J zap-report.json \
+            -d
 
       - name: Upload Reports
         uses: actions/upload-artifact@v4
         with:
-          name: zap-reports
+          name: zap-security-reports
           path: |
             zap-report.html
             zap-report.xml
             zap-report.json
+          retention-days: 3
 
-      - name: Check Results
+      - name: Check for Critical Findings
         run: |
           if grep -q "<riskcode>3" zap-report.xml; then
             echo "::error::High risk vulnerabilities detected!"
